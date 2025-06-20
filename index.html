@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>TR-909 Clone</title>
+  <style>
+    body { font-family: sans-serif; background:#222; color:#eee; padding:20px; }
+    .grid { display: grid; grid-template-columns: repeat(16, 1fr); gap:4px; margin-bottom:10px; }
+    .step { width:30px; height:30px; background:#444; border:none; cursor:pointer; }
+    .step.active { background:#ff4081; }
+    #controls { margin-top:10px; }
+  </style>
+</head>
+<body>
+  <h1>TR-909 Clone Web App</h1>
+  <div id="sequencers"></div>
+  <div id="controls">
+    <button id="start">▶️ Start</button>
+    <button id="stop">⏹️ Stop</button>
+    <label>Tempo: <input type="number" id="bpm" value="120" min="60" max="200"> BPM</label>
+  </div>
+
+  <script src="https://unpkg.com/tone/build/Tone.js"></script>
+  <script>
+    // サウンド定義
+    const sounds = {
+      kick: new Tone.MembraneSynth({ pitchDecay:0.05, octaves:10, envelope:{ attack:0.001, decay:0.5, sustain:0.0 } }).toDestination(),
+      snare: new Tone.NoiseSynth({ noise:{ type:"white" }, envelope:{ attack:0.001, decay:0.2, sustain:0 } }).toDestination(),
+      hihat: new Tone.MetalSynth({ frequency:400, envelope:{ attack:0.001, decay:0.1, release:0.01 }, harmonicity:5.1, modulationIndex:32 }).toDestination(),
+      clap: new Tone.NoiseSynth({ noise:{ type:"white" }, envelope:{ attack:0.001, decay:0.3, sustain:0 } }).toDestination()
+      // 他の音色も同様に追加可能
+    };
+
+    // シーケンサーの初期化
+    const instrumentKeys = Object.keys(sounds);
+    const seqData = {};
+    const sequencers = document.getElementById('sequencers');
+    instrumentKeys.forEach(key => {
+      seqData[key] = Array(16).fill(false);
+      const container = document.createElement('div');
+      container.innerHTML = `<strong>${key}</strong>`;
+      const grid = document.createElement('div');
+      grid.className = 'grid';
+      for (let i = 0; i < 16; i++) {
+        const btn = document.createElement('button');
+        btn.className = 'step';
+        btn.addEventListener('click', () => {
+          seqData[key][i] = !seqData[key][i];
+          btn.classList.toggle('active', seqData[key][i]);
+        });
+        grid.appendChild(btn);
+      }
+      container.appendChild(grid);
+      sequencers.appendChild(container);
+    });
+
+    // ループ再生
+    Tone.Transport.scheduleRepeat((time) => {
+      const step = (Tone.Transport.position.split(':')[1]) % 16;
+      instrumentKeys.forEach((key, idx) => {
+        if (seqData[key][step]) {
+          sounds[key].triggerAttackRelease('16n', time);
+        }
+      });
+    }, '16n');
+
+    // コントロール設定
+    document.getElementById('start').onclick = async () => {
+      await Tone.start();
+      Tone.Transport.start();
+    };
+    document.getElementById('stop').onclick = () => Tone.Transport.stop();
+    document.getElementById('bpm').onchange = e => {
+      Tone.Transport.bpm.value = parseInt(e.target.value);
+    };
+    Tone.Transport.bpm.value = 120;
+  </script>
+</body>
+</html>
