@@ -2,13 +2,14 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <title>TR-909 Clone</title>
+  <title>TR-909 Clone with Distortion</title>
   <style>
     body { font-family: sans-serif; background:#222; color:#eee; padding:20px; }
     .grid { display: grid; grid-template-columns: repeat(16, 1fr); gap:4px; margin-bottom:10px; }
     .step { width:30px; height:30px; background:#444; border:none; cursor:pointer; }
     .step.active { background:#ff4081; }
     #controls { margin-top:10px; }
+    .distortion { width: 100px; }
   </style>
 </head>
 <body>
@@ -22,23 +23,42 @@
 
   <script src="https://unpkg.com/tone/build/Tone.js"></script>
   <script>
-    // サウンド定義
-    const sounds = {
-      kick: new Tone.MembraneSynth({ pitchDecay:0.05, octaves:10, envelope:{ attack:0.001, decay:0.5, sustain:0.0 } }).toDestination(),
-      snare: new Tone.NoiseSynth({ noise:{ type:"white" }, envelope:{ attack:0.001, decay:0.2, sustain:0 } }).toDestination(),
-      hihat: new Tone.MetalSynth({ frequency:400, envelope:{ attack:0.001, decay:0.1, release:0.01 }, harmonicity:5.1, modulationIndex:32 }).toDestination(),
-      clap: new Tone.NoiseSynth({ noise:{ type:"white" }, envelope:{ attack:0.001, decay:0.3, sustain:0 } }).toDestination()
-      // 他の音色も同様に追加可能
-    };
+    // 各音色とエフェクトの設定
+    const distortions = {};
+    const sounds = {};
 
-    // シーケンサーの初期化
+    function createDistortedSynth(synth) {
+      const dist = new Tone.Distortion(0).toDestination();
+      distortions[synth] = dist;
+      return synth.connect(dist);
+    }
+
+    sounds.kick = createDistortedSynth(new Tone.MembraneSynth({
+      pitchDecay: 0.05, octaves: 10, envelope: { attack: 0.001, decay: 0.5, sustain: 0.0 }
+    }));
+    sounds.snare = createDistortedSynth(new Tone.NoiseSynth({
+      noise: { type: "white" },
+      envelope: { attack: 0.001, decay: 0.2, sustain: 0 }
+    }));
+    sounds.hihat = createDistortedSynth(new Tone.MetalSynth({
+      frequency: 400, envelope: { attack: 0.001, decay: 0.1, release: 0.01 },
+      harmonicity: 5.1, modulationIndex: 32
+    }));
+    sounds.clap = createDistortedSynth(new Tone.NoiseSynth({
+      noise: { type: "white" },
+      envelope: { attack: 0.001, decay: 0.3, sustain: 0 }
+    }));
+
+    // シーケンサー構築
     const instrumentKeys = Object.keys(sounds);
     const seqData = {};
     const sequencers = document.getElementById('sequencers');
+
     instrumentKeys.forEach(key => {
       seqData[key] = Array(16).fill(false);
       const container = document.createElement('div');
-      container.innerHTML = `<strong>${key}</strong>`;
+      container.innerHTML = `<strong>${key}</strong>
+        <input class="distortion" type="range" min="0" max="1" step="0.01" value="0" data-key="${key}">`;
       const grid = document.createElement('div');
       grid.className = 'grid';
       for (let i = 0; i < 16; i++) {
@@ -54,22 +74,41 @@
       sequencers.appendChild(container);
     });
 
-    // ループ再生
+    // 歪み調整
+    document.querySelectorAll('.distortion').forEach(slider => {
+      slider.addEventListener('input', e => {
+        const key = e.target.dataset.key;
+        distortions[key].distortion = parseFloat(e.target.value);
+      });
+    });
+
+    // 再生ループ
+    let currentStep = 0;
     Tone.Transport.scheduleRepeat((time) => {
-      const step = (Tone.Transport.position.split(':')[1]) % 16;
-      instrumentKeys.forEach((key, idx) => {
-        if (seqData[key][step]) {
-          sounds[key].triggerAttackRelease('16n', time);
+      instrumentKeys.forEach(key => {
+        if (seqData[key][currentStep]) {
+          // triggerAttackReleaseで単音発音
+          if (key === 'kick') {
+            sounds[key].triggerAttackRelease('C1', '16n', time);
+          } else if (key === 'hihat') {
+            sounds[key].triggerAttackRelease('16n', time);
+          } else {
+            sounds[key].triggerAttackRelease('16n', time);
+          }
         }
       });
+      currentStep = (currentStep + 1) % 16;
     }, '16n');
 
-    // コントロール設定
+    // コントロール
     document.getElementById('start').onclick = async () => {
       await Tone.start();
       Tone.Transport.start();
     };
-    document.getElementById('stop').onclick = () => Tone.Transport.stop();
+    document.getElementById('stop').onclick = () => {
+      Tone.Transport.stop();
+      currentStep = 0;
+    };
     document.getElementById('bpm').onchange = e => {
       Tone.Transport.bpm.value = parseInt(e.target.value);
     };
